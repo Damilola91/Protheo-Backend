@@ -25,7 +25,20 @@ users.post("/users/create", validateUser, async (req: Request, res: Response, ne
       },
     });
     } catch (error) {
-        next(error);
+    next(error);
+    }
+})
+
+
+users.get("/users", async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const users = await User.find().select("-password");
+        if (users.length === 0) {
+            return res.status(404).json({ message: "No users found." });
+        }
+        res.status(200).json({ users });
+    } catch (error) {
+        next(error)
     }
 })
 
