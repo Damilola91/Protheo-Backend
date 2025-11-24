@@ -8,10 +8,10 @@ export interface ApiErrorResponse {
 }
 
 export const errorHandler = (
+  err: unknown,
   req: Request,
   res: Response,
-  next: NextFunction,
-  err: unknown
+  next: NextFunction
 ) => {
   const statusCode =
     typeof (err as { status?: number }).status === "number"
