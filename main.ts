@@ -5,10 +5,12 @@ import users from "./routes/users";
 import errorHandler, { ApiErrorResponse } from "./middlewares/errorHandler";
 
 const server = express();
+const PORT = process.env.PORT || 4154;
 
 server.use(express.json());
 server.use(cors());
-server.use("/", users);
+
+server.use("/api/users", users);
 
 server.use((req: Request, res: Response) => {
   const response: ApiErrorResponse = {
@@ -17,13 +19,10 @@ server.use((req: Request, res: Response) => {
     path: req.originalUrl,
   };
 
-  const PORT = process.env.PORT || 4154;
   res.status(404).json(response);
 });
 
 server.use(errorHandler);
-
-const PORT = process.env.PORT || 4154;
 
 init();
 

@@ -1,70 +1,63 @@
 import mongoose, { Document, Schema } from "mongoose";
 import bcrypt from "bcrypt";
 
-const allowedRoles = ["admin", "user"] as const;
-
+export const allowedRoles = ["admin", "user"] as const;
+const SALT_ROUNDS = 10;
 
 export interface IUser extends Document {
   name: string;
   email: string;
   password: string;
   role: (typeof allowedRoles)[number];
-  createdAt?: Date;
-  updatedAt?: Date;
-  comparePassword(candidatePassword: string): Promise<boolean>;
+  comparePassword(candidate: string): Promise<boolean>;
 }
-
 
 const UserSchema = new Schema<IUser>(
   {
-    name: {
-      type: String,
-      required: true,
-      trim: true,
-    },
+    name: { type: String, required: true, trim: true },
+
     email: {
       type: String,
       required: true,
       unique: true,
       lowercase: true,
       trim: true,
+      match: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
     },
+
     password: {
       type: String,
       required: true,
       minlength: 8,
     },
+
     role: {
       type: String,
       enum: allowedRoles,
       default: "user",
     },
   },
-  {
-    timestamps: true,
-    strict: true,
-  }
+  { timestamps: true }
 );
 
-
+// 🔐 Hash password only if changed
 UserSchema.pre("save", async function (next) {
-  const user = this as IUser;
-  if (!user.isModified("password")) return next();
-
-  try {
-    const salt = await bcrypt.genSalt(10);
-    user.password = await bcrypt.hash(user.password, salt);
-    next();
-  } catch (error) {
-    next(error as any);
-  }
+  if (!this.isModified("password")) return next();
+  this.password = await bcrypt.hash(this.password, SALT_ROUNDS);
+  next();
 });
 
-
-UserSchema.methods.comparePassword = async function (candidatePassword: string): Promise<boolean> {
-  const user = this as IUser;
-  return bcrypt.compare(candidatePassword, user.password);
+// Compare hashed password
+UserSchema.methods.comparePassword = function (
+  candidate: string
+): Promise<boolean> {
+  return bcrypt.compare(candidate, this.password);
 };
 
-const User = mongoose.model<IUser>("User", UserSchema);
-export default User;
+UserSchema.methods.toJSON = function () {
+  const user = this.toObject();
+  delete user.password;
+  return user;
+};
+
+export default mongoose.model<IUser>("User", UserSchema);

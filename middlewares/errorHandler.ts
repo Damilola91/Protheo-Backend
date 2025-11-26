@@ -8,37 +8,21 @@ export interface ApiErrorResponse {
 }
 
 export const errorHandler = (
-  err: unknown,
+  err: any,
   req: Request,
   res: Response,
   next: NextFunction
 ) => {
-  const statusCode =
-    typeof (err as { status?: number }).status === "number"
-      ? (err as { status: number }).status
-      : typeof (err as { statusCode?: number }).statusCode === "number"
-      ? (err as { statusCode: number }).statusCode
-      : 500;
-
-  const message =
-    (err as { message?: string }).message || "Internal server error";
-  const details = (err as { details?: unknown }).details;
-
+  const statusCode = err.statusCode ?? err.status ?? 500;
   const response: ApiErrorResponse = {
     statusCode,
-    message,
+    message: err.message ?? "Internal server error",
     path: req.originalUrl,
+    ...(err.details && { details: err.details }),
   };
 
-  if (details !== undefined) {
-    response.details = details;
-  }
+  if (statusCode >= 500) console.error("[SERVER ERROR]", err);
 
-  if (statusCode >= 500) {
-    console.error(err);
-  }
-
-  res.status(statusCode).json(response);
+  return res.status(statusCode).json(response);
 };
-
 export default errorHandler;
