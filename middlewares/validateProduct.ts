@@ -10,12 +10,40 @@ export const validateProduct = (
   const errors: string[] = [];
   const { name, image, features, composition, dosage, packaging } = req.body;
 
-  if (!name || typeof name !== "string" || !name.trim()) {
-    errors.push("Product name is required and must be a non-empty string");
+  if (req.method === "POST") {
+    if (!name || typeof name !== "string" || !name.trim()) {
+      errors.push("Product name is required for creation.");
+    }
+  }
+
+  // Se è PATCH: validate only if provided
+  if (req.method === "PATCH" && name !== undefined) {
+    if (typeof name !== "string" || !name.trim()) {
+      errors.push("If name is provided, it must be a valid string.");
+    }
   }
 
   if (!image || typeof image !== "string" || !image.trim()) {
     errors.push("Product image is required and must be a non-empty string URL");
+  }
+
+  if (features && Array.isArray(features)) {
+    features.forEach((f, index) => {
+      // Se è provided deve essere valido
+      if (!f.name || typeof f.name !== "string" || !f.name.trim()) {
+        errors.push(`features[${index}].name must be a non-empty string.`);
+      }
+
+      if (f.iconUrl !== undefined && typeof f.iconUrl !== "string") {
+        errors.push(`features[${index}].iconUrl must be a string if provided.`);
+      }
+
+      if (f.description !== undefined && typeof f.description !== "string") {
+        errors.push(
+          `features[${index}].description must be a string if provided.`
+        );
+      }
+    });
   }
 
   if (composition && Array.isArray(composition)) {
