@@ -48,6 +48,7 @@ export interface IProduct extends Document {
     weight?: number; // kg
     volume?: number; // L
     ecoFriendly?: boolean;
+    iconUrl?: string;
   }[];
 
   // EFFETTI SUDDIVISI PER AREA — AGGIUNTO ✔
@@ -105,6 +106,7 @@ const ProductSchema = new Schema<IProduct>(
         weight: Number,
         volume: Number,
         ecoFriendly: Boolean,
+        iconUrl: String,
       },
     ],
 
