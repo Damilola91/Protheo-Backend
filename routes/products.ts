@@ -14,7 +14,7 @@ import { verifyToken, authorizeAdmin } from "../middlewares/authGuard";
 const products = Router();
 
 products.get("/list", getAllProducts);
-products.get("/details", getProductById);
+products.get("/details/:productId", getProductById);
 products.get("/paginated", getPaginatedProducts);
 products.get("/filter", filterProducts);
 products.post(
