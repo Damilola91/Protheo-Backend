@@ -9,6 +9,9 @@ import {
   filterProducts,
   uploadProductImage,
   uploadProductImages,
+  publishProduct,
+  unpublishProduct,
+  getPublishedProducts,
 } from "../controllers/productController";
 import { validateProduct } from "../middlewares/validateProduct";
 import { verifyToken, authorizeAdmin } from "../middlewares/authGuard";
@@ -17,6 +20,8 @@ import { uploadSingle, uploadMultiple } from "../utils/cloudinary";
 const products = Router();
 
 products.get("/list", getAllProducts);
+
+products.get("/published", getPublishedProducts);
 
 products.get("/details/:productId", getProductById);
 
@@ -45,6 +50,20 @@ products.delete(
   verifyToken,
   authorizeAdmin,
   deleteProduct
+);
+
+// CMS ACCESS — only admin
+products.patch(
+  "/publish/:productId",
+  verifyToken,
+  authorizeAdmin,
+  publishProduct
+);
+products.patch(
+  "/unpublish/:productId",
+  verifyToken,
+  authorizeAdmin,
+  unpublishProduct
 );
 
 products.post("/upload-image", uploadSingle, uploadProductImage);

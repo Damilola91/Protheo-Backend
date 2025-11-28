@@ -11,56 +11,54 @@ export const allowedPackagingTypes = [
 export const allowedUnits = ["KG/HA", "G/HL", "ML/HL", "L/HA"] as const;
 
 // INTERFACCIA UFFICIALE PRODOTTO
-// ──────────────────────────────────────────────────────────
 export interface IProduct extends Document {
   name: string;
   image: string;
 
   description?: string;
   category?: string;
-  technology?: string; // esempio: "DOS-PE", "Chelato EDDHA" ecc.
+  technology?: string;
 
-  // FEATURES = ICONS  ✔ (richiesta)
   features?: {
-    name: string; // es. "slow release"
-    iconUrl?: string; // svg/png (non obbligatoria)
-    description?: string; // se vuoi spiegazione testuale
+    name: string;
+    iconUrl?: string;
+    description?: string;
   }[];
 
-  // COMPOSIZIONE — OPZIONALE ✔
   composition?: {
-    element: string; // es. "N", "Fe", "SO3", "P2O5"
+    element: string;
     percentage: number;
   }[];
 
-  // DOSAGGI — OPZIONALE ✔
   dosage?: {
-    crop: string; // Kiwi, Vite, Agrumi, Cereali...
+    crop: string;
     min: number;
     max: number;
     unit: (typeof allowedUnits)[number];
     application?: "foliar" | "fertigation" | "soil" | "universal";
   }[];
 
-  // PACKAGING — ARRAY ✔
   packaging?: {
     type: (typeof allowedPackagingTypes)[number];
-    weight?: number; // kg
-    volume?: number; // L
+    weight?: number;
+    volume?: number;
     ecoFriendly?: boolean;
     iconUrl?: string;
   }[];
 
-  // EFFETTI SUDDIVISI PER AREA — AGGIUNTO ✔
   effects?: {
-    plant?: string[]; // lignificazione, metabolismo ecc.
-    flower?: string[]; // qualità fiori, gemme ecc.
-    soil?: string[]; // attività microbiologica ecc.
+    plant?: string[];
+    flower?: string[];
+    soil?: string[];
   };
 
-  // DATI COMMERCIALI
   stock?: number;
   price?: number;
+
+  // 🔥 NEW CMS FIELDS
+  isPublished?: boolean;
+  publishedAt?: Date | null;
+  lastEditedBy?: string | mongoose.Types.ObjectId | null;
 
   createdAt?: Date;
   updatedAt?: Date;
@@ -118,6 +116,11 @@ const ProductSchema = new Schema<IProduct>(
 
     stock: Number,
     price: Number,
+
+    // 🔥 CMS fields
+    isPublished: { type: Boolean, default: false },
+    publishedAt: { type: Date, default: null },
+    lastEditedBy: { type: Schema.Types.ObjectId, ref: "User", default: null },
   },
   { timestamps: true }
 );

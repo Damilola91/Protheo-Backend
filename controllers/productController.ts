@@ -187,6 +187,71 @@ export const filterProducts = async (
     next(err);
   }
 };
+// PUBLISH product (visibile nel frontend)
+export const publishProduct = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const product = await Product.findByIdAndUpdate(
+      req.params.productId,
+      {
+        isPublished: true,
+        publishedAt: new Date(),
+        lastEditedBy: (req as any).user.id,
+      },
+      { new: true }
+    );
+
+    if (!product) return next(createError(404, "Product not found"));
+    return res.status(200).json({ message: "Product published", product });
+  } catch (err) {
+    next(err);
+  }
+};
+// UNPUBLISH product → non visibile nel frontend
+export const unpublishProduct = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const product = await Product.findByIdAndUpdate(
+      req.params.productId,
+      {
+        isPublished: false,
+        lastEditedBy: (req as any).user.id,
+      },
+      { new: true }
+    );
+
+    if (!product) return next(createError(404, "Product not found"));
+    return res.status(200).json({ message: "Product unpublished", product });
+  } catch (err) {
+    next(err);
+  }
+};
+// LISTA solo prodotti pubblicati → utile per frontend
+export const getPublishedProducts = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const products = await Product.find({ isPublished: true });
+
+    if (!products.length)
+      return next(createError(404, "No published products found"));
+
+    return res.status(200).json({
+      count: products.length,
+      products,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
 
 export const uploadProductImage = (
   req: Request,
@@ -208,7 +273,6 @@ export const uploadProductImage = (
     next(err);
   }
 };
-
 export const uploadProductImages = (
   req: Request,
   res: Response,
