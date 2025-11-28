@@ -187,3 +187,49 @@ export const filterProducts = async (
     next(err);
   }
 };
+
+export const uploadProductImage = (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: "No file provided" });
+    }
+
+    const file = req.file as any; // Cloudinary + multer
+    return res.status(200).json({
+      message: "Image uploaded successfully",
+      url: file.path, // URL cloudinary
+      public_id: file.filename || file.public_id,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const uploadProductImages = (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    if (!req.files || !Array.isArray(req.files)) {
+      return res.status(400).json({ message: "No files provided" });
+    }
+
+    const files = req.files as any[];
+    const urls = files.map((f) => ({
+      url: f.path,
+      public_id: f.filename || f.public_id,
+    }));
+
+    return res.status(200).json({
+      message: "Images uploaded successfully",
+      files: urls,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
