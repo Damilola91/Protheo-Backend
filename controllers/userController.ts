@@ -56,6 +56,26 @@ export const getUserById = async (
   }
 };
 
+export const getMe = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { id } = (req as any).user; // dal token
+
+    const user = await User.findById(id).select("-password");
+    if (!user) return next(createError(404, "User not found"));
+
+    return res.status(200).json({
+      message: "Authenticated user info",
+      user,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
 // UPDATE
 export const updateUser = async (
   req: Request,
