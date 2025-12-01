@@ -12,6 +12,7 @@ import {
   publishProduct,
   unpublishProduct,
   getPublishedProducts,
+  duplicateProduct,
 } from "../controllers/productController";
 import { validateProduct } from "../middlewares/validateProduct";
 import { verifyToken, authorizeAdmin } from "../middlewares/authGuard";
@@ -35,6 +36,13 @@ products.post(
   authorizeAdmin,
   validateProduct,
   createProduct
+);
+
+products.post(
+  "/duplicated/:productId",
+  verifyToken,
+  authorizeAdmin,
+  duplicateProduct
 );
 
 products.patch(

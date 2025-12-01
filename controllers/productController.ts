@@ -313,3 +313,41 @@ export const getPublishedProducts = async (
     next(err);
   }
 };
+
+export const duplicateProduct = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const original = await Product.findById(req.params.productId);
+    if (!original) return next(createError(404, "Product not found"));
+
+    const data = original.toObject();
+    delete data._id;
+    delete data.createdAt;
+    delete data.updatedAt;
+
+    const duplicated = await Product.create({
+      ...data,
+      name: `${original.name} (Copy)`,
+      isPublished: false,
+      publishedAt: null,
+      lastEditedBy: (req as any).user.id,
+    });
+
+    await logActivity({
+      action: "DUPLICATE_PRODUCT",
+      userId: (req as any).user.id,
+      productId: duplicated._id,
+      changes: { from: original._id },
+    });
+
+    return res.status(201).json({
+      message: "Product duplicated successfully",
+      product: duplicated,
+    });
+  } catch (err) {
+    next(err);
+  }
+};

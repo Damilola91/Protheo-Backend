@@ -4,6 +4,7 @@ import express, { Request, Response } from "express";
 import users from "./routes/users";
 import login from "./routes/login";
 import products from "./routes/products";
+import activity from "./routes/activityLogs";
 import errorHandler, { ApiErrorResponse } from "./middlewares/errorHandler";
 
 const server = express();
@@ -17,6 +18,7 @@ server.use(cors());
 server.use("/api/users", users);
 server.use("/api/auth", login);
 server.use("/api/products", products);
+server.use("/api/activity", activity);
 
 // 404 Handler
 server.use((req: Request, res: Response) => {
