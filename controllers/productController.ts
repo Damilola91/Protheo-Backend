@@ -1,7 +1,9 @@
 import { Request, Response, NextFunction } from "express";
 import Product from "../models/ProductModel";
 import { createError } from "../utils/createError";
+import { logActivity } from "../utils/logActivity";
 
+// CREATE PRODUCT
 export const createProduct = async (
   req: Request,
   res: Response,
@@ -9,6 +11,13 @@ export const createProduct = async (
 ) => {
   try {
     const product = await Product.create(req.body);
+
+    await logActivity({
+      action: "CREATE_PRODUCT",
+      userId: (req as any).user.id,
+      productId: product._id,
+    });
+
     return res.status(201).json({
       message: "Product created successfully",
       product,
@@ -18,6 +27,7 @@ export const createProduct = async (
   }
 };
 
+// GET ALL PRODUCTS
 export const getAllProducts = async (
   req: Request,
   res: Response,
@@ -25,9 +35,7 @@ export const getAllProducts = async (
 ) => {
   try {
     const products = await Product.find();
-    if (!products.length) {
-      return next(createError(404, "No products found"));
-    }
+    if (!products.length) return next(createError(404, "No products found"));
 
     return res.status(200).json({
       count: products.length,
@@ -38,6 +46,7 @@ export const getAllProducts = async (
   }
 };
 
+// GET PRODUCT BY ID
 export const getProductById = async (
   req: Request,
   res: Response,
@@ -45,31 +54,36 @@ export const getProductById = async (
 ) => {
   try {
     const product = await Product.findById(req.params.productId);
-    if (!product) {
-      return next(createError(404, "Product not found"));
-    }
+    if (!product) return next(createError(404, "Product not found"));
 
     return res.status(200).json({ product });
-  } catch (err) {
+  } catch {
     next(createError(400, "Invalid productId format"));
   }
 };
 
+// UPDATE PRODUCT + LOG BEFORE/AFTER
 export const updateProduct = async (
   req: Request,
   res: Response,
   next: NextFunction
 ) => {
   try {
+    const before = await Product.findById(req.params.productId);
+    if (!before) return next(createError(404, "Product not found"));
+
     const updated = await Product.findByIdAndUpdate(
       req.params.productId,
       req.body,
       { new: true, runValidators: true }
     );
 
-    if (!updated) {
-      return next(createError(404, "Product not found"));
-    }
+    await logActivity({
+      action: "UPDATE_PRODUCT",
+      userId: (req as any).user.id,
+      productId: updated?._id,
+      changes: { before, after: updated },
+    });
 
     return res.status(200).json({
       message: "Product updated successfully",
@@ -80,6 +94,7 @@ export const updateProduct = async (
   }
 };
 
+// DELETE PRODUCT + LOG
 export const deleteProduct = async (
   req: Request,
   res: Response,
@@ -87,18 +102,21 @@ export const deleteProduct = async (
 ) => {
   try {
     const deleted = await Product.findByIdAndDelete(req.params.productId);
-    if (!deleted) {
-      return next(createError(404, "Product not found"));
-    }
+    if (!deleted) return next(createError(404, "Product not found"));
 
-    return res.status(200).json({
-      message: "Product deleted successfully",
+    await logActivity({
+      action: "DELETE_PRODUCT",
+      userId: (req as any).user.id,
+      productId: deleted._id,
     });
+
+    return res.status(200).json({ message: "Product deleted successfully" });
   } catch (err) {
     next(err);
   }
 };
 
+// PAGINATION
 export const getPaginatedProducts = async (
   req: Request,
   res: Response,
@@ -116,7 +134,7 @@ export const getPaginatedProducts = async (
       total,
       page,
       pages: Math.ceil(total / limit),
-      amount: products.length,
+      count: products.length,
       products,
     });
   } catch (err) {
@@ -124,6 +142,7 @@ export const getPaginatedProducts = async (
   }
 };
 
+// FILTERS
 export const filterProducts = async (
   req: Request,
   res: Response,
@@ -132,53 +151,39 @@ export const filterProducts = async (
   try {
     const filter: any = {};
 
-    // FILTRI BASE DIRETTI
     if (req.query.name) filter.name = { $regex: req.query.name, $options: "i" };
     if (req.query.category) filter.category = req.query.category;
     if (req.query.technology) filter.technology = req.query.technology;
 
-    // PREZZO
     if (req.query.minPrice || req.query.maxPrice) {
       filter.price = {};
       if (req.query.minPrice) filter.price.$gte = Number(req.query.minPrice);
       if (req.query.maxPrice) filter.price.$lte = Number(req.query.maxPrice);
     }
 
-    // FEATURES (search inside array)
-    if (req.query.feature) {
+    if (req.query.feature)
       filter["features.name"] = { $regex: req.query.feature, $options: "i" };
-    }
-
-    // COMPOSITION element
-    if (req.query.element) {
+    if (req.query.element)
       filter["composition.element"] = {
         $regex: req.query.element,
         $options: "i",
       };
-    }
-
-    // DOSAGE CROP
-    if (req.query.crop) {
+    if (req.query.crop)
       filter["dosage.crop"] = { $regex: req.query.crop, $options: "i" };
-    }
+    if (req.query.packageType) filter["packaging.type"] = req.query.packageType;
 
-    // PACKAGING
-    if (req.query.packageType) {
-      filter["packaging.type"] = req.query.packageType;
-    }
+    const sortField = (req.query.sort as string) || "createdAt";
+    const sortOrder = sortField.startsWith("-") ? -1 : 1;
+    const sanitizedSort = sortField.replace("-", "");
 
-    // ORDINAMENTO → sort=price (asc) | -price (desc)
-    const sort = req.query.sort
-      ? String(req.query.sort).replace("-", "")
-      : "createdAt";
-    const order = String(req.query.sort || "").includes("-") ? -1 : 1;
-
-    const results = await Product.find(filter).sort({ [sort]: order });
+    const results = await Product.find(filter).sort({
+      [sanitizedSort]: sortOrder,
+    });
 
     if (!results.length)
       return res.status(404).json({ message: "No products match filters" });
 
-    res.status(200).json({
+    return res.status(200).json({
       filtersUsed: req.query,
       total: results.length,
       products: results,
@@ -187,7 +192,8 @@ export const filterProducts = async (
     next(err);
   }
 };
-// PUBLISH product (visibile nel frontend)
+
+// PUBLISH PRODUCT
 export const publishProduct = async (
   req: Request,
   res: Response,
@@ -205,12 +211,20 @@ export const publishProduct = async (
     );
 
     if (!product) return next(createError(404, "Product not found"));
-    return res.status(200).json({ message: "Product published", product });
+
+    await logActivity({
+      action: "PUBLISH_PRODUCT",
+      userId: (req as any).user.id,
+      productId: product._id,
+    });
+
+    res.status(200).json({ message: "Product published", product });
   } catch (err) {
     next(err);
   }
 };
-// UNPUBLISH product → non visibile nel frontend
+
+// UNPUBLISH PRODUCT
 export const unpublishProduct = async (
   req: Request,
   res: Response,
@@ -219,19 +233,66 @@ export const unpublishProduct = async (
   try {
     const product = await Product.findByIdAndUpdate(
       req.params.productId,
-      {
-        isPublished: false,
-        lastEditedBy: (req as any).user.id,
-      },
+      { isPublished: false, lastEditedBy: (req as any).user.id },
       { new: true }
     );
 
     if (!product) return next(createError(404, "Product not found"));
-    return res.status(200).json({ message: "Product unpublished", product });
+
+    await logActivity({
+      action: "UNPUBLISH_PRODUCT",
+      userId: (req as any).user.id,
+      productId: product._id,
+    });
+
+    res.status(200).json({ message: "Product unpublished", product });
   } catch (err) {
     next(err);
   }
 };
+
+// UPLOAD SINGLE
+export const uploadProductImage = (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    if (!req.file) return res.status(400).json({ message: "No file provided" });
+
+    const file = req.file as any;
+
+    return res.status(200).json({
+      message: "Image uploaded successfully",
+      url: file.path,
+      public_id: file.filename || file.public_id,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// UPLOAD MULTIPLE
+export const uploadProductImages = (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    if (!req.files || !Array.isArray(req.files))
+      return res.status(400).json({ message: "No files provided" });
+
+    const files = (req.files as any[]).map((f) => ({
+      url: f.path,
+      public_id: f.filename || f.public_id,
+    }));
+
+    return res.status(200).json({ message: "Images uploaded", files });
+  } catch (err) {
+    next(err);
+  }
+};
+
 // LISTA solo prodotti pubblicati → utile per frontend
 export const getPublishedProducts = async (
   req: Request,
@@ -247,51 +308,6 @@ export const getPublishedProducts = async (
     return res.status(200).json({
       count: products.length,
       products,
-    });
-  } catch (err) {
-    next(err);
-  }
-};
-
-export const uploadProductImage = (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ message: "No file provided" });
-    }
-
-    const file = req.file as any; // Cloudinary + multer
-    return res.status(200).json({
-      message: "Image uploaded successfully",
-      url: file.path, // URL cloudinary
-      public_id: file.filename || file.public_id,
-    });
-  } catch (err) {
-    next(err);
-  }
-};
-export const uploadProductImages = (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
-  try {
-    if (!req.files || !Array.isArray(req.files)) {
-      return res.status(400).json({ message: "No files provided" });
-    }
-
-    const files = req.files as any[];
-    const urls = files.map((f) => ({
-      url: f.path,
-      public_id: f.filename || f.public_id,
-    }));
-
-    return res.status(200).json({
-      message: "Images uploaded successfully",
-      files: urls,
     });
   } catch (err) {
     next(err);
