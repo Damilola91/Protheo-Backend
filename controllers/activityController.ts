@@ -101,3 +101,61 @@ export const deleteOldActivityLogs = async (
     next(err);
   }
 };
+
+export const exportActivityLogsCSV = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const filter: any = {};
+
+    // Filtri opzionali
+    if (req.query.action) filter.action = req.query.action;
+    if (req.query.userId) filter.userId = req.query.userId;
+    if (req.query.productId) filter.productId = req.query.productId;
+
+    if (req.query.from || req.query.to) {
+      filter.createdAt = {};
+      if (req.query.from)
+        filter.createdAt.$gte = new Date(String(req.query.from));
+      if (req.query.to) filter.createdAt.$lte = new Date(String(req.query.to));
+    }
+
+    const logs = await ActivityLogModel.find(filter)
+      .populate("userId", "name email role") // 🔥 user completo
+      .populate("productId", "name image"); // 🔥 info prodotto
+
+    if (!logs.length) return next(createError(404, "No logs found for export"));
+
+    // HEADER CSV
+    let csv = "Action,User Name,User Email,Product Name,Product ID,Date\n";
+
+    const toCSV = (log: any) => {
+      const user = log.userId || {};
+      const product = log.productId || {};
+
+      return [
+        log.action,
+        user.name ?? "",
+        user.email ?? "",
+        product.name ?? "",
+        product._id ?? log.productId ?? "",
+        log.createdAt,
+      ].join(",");
+    };
+
+    csv += logs.map(toCSV).join("\n");
+
+    // Response con download del CSV
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=activity-logs.csv"
+    );
+
+    return res.status(200).send(csv);
+  } catch (err) {
+    next(err);
+  }
+};

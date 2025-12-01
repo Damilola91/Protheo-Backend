@@ -4,11 +4,14 @@ import {
   getActivityLogs,
   deleteActivityLog,
   deleteOldActivityLogs,
+  exportActivityLogsCSV,
 } from "../controllers/activityController";
 
 const activity = Router();
 
 activity.get("/logs", verifyToken, authorizeAdmin, getActivityLogs);
+
+activity.get("/export/csv", verifyToken, authorizeAdmin, exportActivityLogsCSV);
 
 activity.delete(
   "/remove/:logId",
