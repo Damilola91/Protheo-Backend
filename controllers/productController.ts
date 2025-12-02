@@ -76,8 +76,7 @@ export const updateProduct = async (
     const beforeObj = before as Record<string, any>;
     const updateData: Record<string, any> = { ...req.body };
 
-    // ---------------------------
-    // 🔥 RENAME INTELLIGENTE
+    //  RENAME INTELLIGENTE
     // ---------------------------
     if (updateData.name && updateData.name !== beforeObj.name) {
       const baseName = updateData.name.trim();
@@ -145,7 +144,6 @@ export const updateProduct = async (
 };
 
 // DELETE PRODUCT
-
 export const deleteProduct = async (
   req: Request,
   res: Response,
@@ -168,7 +166,6 @@ export const deleteProduct = async (
 };
 
 // PAGINATION
-
 export const getPaginatedProducts = async (
   req: Request,
   res: Response,
@@ -179,14 +176,67 @@ export const getPaginatedProducts = async (
     const limit = Number(req.query.limit) || 10;
     const skip = (page - 1) * limit;
 
-    const total = await Product.countDocuments();
-    const products = await Product.find().skip(skip).limit(limit);
+    const filter: any = {};
+
+    /** 🔎 TEXT SEARCH */
+    if (req.query.name)
+      filter.name = { $regex: String(req.query.name), $options: "i" };
+
+    if (req.query.category) filter.category = req.query.category;
+    if (req.query.technology) filter.technology = req.query.technology;
+
+    /** 💰 PRICE RANGE */
+    if (req.query.minPrice || req.query.maxPrice) {
+      filter.price = {};
+      if (req.query.minPrice) filter.price.$gte = Number(req.query.minPrice);
+      if (req.query.maxPrice) filter.price.$lte = Number(req.query.maxPrice);
+    }
+
+    /** 🌱 FEATURES (array search) */
+    if (req.query.feature)
+      filter["features.name"] = {
+        $regex: String(req.query.feature),
+        $options: "i",
+      };
+
+    /** 💧 COMPOSITION ELEMENT */
+    if (req.query.element)
+      filter["composition.element"] = {
+        $regex: String(req.query.element),
+        $options: "i",
+      };
+
+    /** 🌾 DOSAGE CROP */
+    if (req.query.crop)
+      filter["dosage.crop"] = {
+        $regex: String(req.query.crop),
+        $options: "i",
+      };
+
+    /** 📦 PACKAGING TYPE */
+    if (req.query.packageType) filter["packaging.type"] = req.query.packageType;
+
+    /** 🧮 ORDINAMENTO */
+    const sortField = (req.query.sort as string) || "createdAt";
+    const sortOrder = sortField.startsWith("-") ? -1 : 1;
+    const sanitizedSort = sortField.replace("-", "");
+
+    /** 📊 QUERY */
+    const [total, products] = await Promise.all([
+      Product.countDocuments(filter),
+      Product.find(filter)
+        .sort({ [sanitizedSort]: sortOrder })
+        .skip(skip)
+        .limit(limit),
+    ]);
 
     return res.status(200).json({
       total,
       page,
+      limit,
       pages: Math.ceil(total / limit),
       count: products.length,
+      filtersUsed: req.query,
       products,
     });
   } catch (err) {
@@ -195,7 +245,6 @@ export const getPaginatedProducts = async (
 };
 
 // FILTER PRODUCTS
-
 export const filterProducts = async (
   req: Request,
   res: Response,
@@ -203,46 +252,108 @@ export const filterProducts = async (
 ) => {
   try {
     const filter: any = {};
+    const orConditions: any[] = [];
 
-    if (req.query.name) filter.name = { $regex: req.query.name, $options: "i" };
-    if (req.query.category) filter.category = req.query.category;
-    if (req.query.technology) filter.technology = req.query.technology;
+    // 🔍 SEARCH GLOBALE (OR automatica)
+    if (req.query.search) {
+      const search = escapeRegex(String(req.query.search));
 
-    if (req.query.minPrice || req.query.maxPrice) {
-      filter.price = {};
-      if (req.query.minPrice) filter.price.$gte = Number(req.query.minPrice);
-      if (req.query.maxPrice) filter.price.$lte = Number(req.query.maxPrice);
+      orConditions.push(
+        { name: { $regex: search, $options: "i" } },
+        { "features.name": { $regex: search, $options: "i" } },
+        { "composition.element": { $regex: search, $options: "i" } },
+        { "dosage.crop": { $regex: search, $options: "i" } }
+      );
     }
 
-    if (req.query.feature)
-      filter["features.name"] = { $regex: req.query.feature, $options: "i" };
+    // 🎯 FILTRI SPECIFICI
 
-    if (req.query.element)
-      filter["composition.element"] = {
-        $regex: req.query.element,
+    if (req.query.name)
+      filter.name = {
+        $regex: escapeRegex(String(req.query.name)),
         $options: "i",
       };
 
-    if (req.query.crop)
-      filter["dosage.crop"] = { $regex: req.query.crop, $options: "i" };
+    if (req.query.category) filter.category = req.query.category;
+    if (req.query.technology) filter.technology = req.query.technology;
 
-    if (req.query.packageType) filter["packaging.type"] = req.query.packageType;
+    // 💰 RANGE DINAMICO (price, percentage, dosage)
+    const dynamicRanges = ["price", "percentage", "dosageMin", "dosageMax"];
 
-    const sortField = (req.query.sort as string) || "createdAt";
-    const sortOrder = sortField.startsWith("-") ? -1 : 1;
-    const sanitizedSort = sortField.replace("-", "");
+    dynamicRanges.forEach((key) => {
+      const minKey = `min${key}`;
+      const maxKey = `max${key}`;
 
-    const results = await Product.find(filter).sort({
-      [sanitizedSort]: sortOrder,
+      if (req.query[minKey] || req.query[maxKey]) {
+        filter[key] = {};
+        if (req.query[minKey]) filter[key].$gte = Number(req.query[minKey]);
+        if (req.query[maxKey]) filter[key].$lte = Number(req.query[maxKey]);
+      }
     });
 
-    if (!results.length)
+    // MULTI-FILTER per ARRAY (features, elements, crops)
+    // Uso: ?feature=A,B,C
+    if (req.query.feature) {
+      const list = String(req.query.feature).split(",");
+      filter["features.name"] = {
+        $in: list.map((x) => new RegExp(escapeRegex(x), "i")),
+      };
+    }
+
+    if (req.query.element) {
+      const list = String(req.query.element).split(",");
+      filter["composition.element"] = {
+        $in: list.map((x) => new RegExp(escapeRegex(x), "i")),
+      };
+    }
+
+    if (req.query.crop) {
+      const list = String(req.query.crop).split(",");
+      filter["dosage.crop"] = {
+        $in: list.map((x) => new RegExp(escapeRegex(x), "i")),
+      };
+    }
+
+    if (req.query.packageType) {
+      const list = String(req.query.packageType).split(",");
+      filter["packaging.type"] = { $in: list };
+    }
+
+    //  AND / OR combinabili
+    if (orConditions.length > 0) {
+      filter.$or = orConditions;
+    }
+
+    // 📄 PAGINAZIONE
+
+    const page = Number(req.query.page) || 1;
+    const limit = Number(req.query.limit) || 20;
+    const skip = (page - 1) * limit;
+
+    // 🔽 SORT
+    const rawSort = req.query.sort || "createdAt";
+    const sortField = String(rawSort).replace("-", "");
+    const sortOrder = String(rawSort).startsWith("-") ? -1 : 1;
+
+    // 🔥 QUERY
+
+    const total = await Product.countDocuments(filter);
+
+    const products = await Product.find(filter)
+      .sort({ [sortField]: sortOrder })
+      .skip(skip)
+      .limit(limit)
+      .lean();
+
+    if (!products.length)
       return res.status(404).json({ message: "No products match filters" });
 
     return res.status(200).json({
+      total,
+      page,
+      pages: Math.ceil(total / limit),
       filtersUsed: req.query,
-      total: results.length,
-      products: results,
+      products,
     });
   } catch (err) {
     next(err);
@@ -250,7 +361,6 @@ export const filterProducts = async (
 };
 
 // PUBLISH PRODUCT
-
 export const publishProduct = async (
   req: Request,
   res: Response,
@@ -282,7 +392,6 @@ export const publishProduct = async (
 };
 
 // UNPUBLISH PRODUCT
-
 export const unpublishProduct = async (
   req: Request,
   res: Response,
@@ -310,7 +419,6 @@ export const unpublishProduct = async (
 };
 
 // UPLOAD SINGLE IMAGE
-
 export const uploadProductImage = (
   req: Request,
   res: Response,
@@ -332,7 +440,6 @@ export const uploadProductImage = (
 };
 
 // UPLOAD MULTIPLE IMAGES
-
 export const uploadProductImages = (
   req: Request,
   res: Response,
@@ -354,7 +461,6 @@ export const uploadProductImages = (
 };
 
 // GET PUBLISHED PRODUCTS
-
 export const getPublishedProducts = async (
   req: Request,
   res: Response,
@@ -376,7 +482,6 @@ export const getPublishedProducts = async (
 };
 
 // DUPLICATE PRODUCT (già perfetto)
-
 export const duplicateProduct = async (
   req: Request,
   res: Response,
