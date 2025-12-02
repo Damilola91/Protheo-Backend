@@ -14,6 +14,7 @@ import {
   getPublishedProducts,
   duplicateProduct,
 } from "../controllers/productController";
+
 import { validateProduct } from "../middlewares/validateProduct";
 import { verifyToken, authorizeAdmin } from "../middlewares/authGuard";
 import { uploadSingle, uploadMultiple } from "../utils/cloudinary";
@@ -21,28 +22,20 @@ import { uploadSingle, uploadMultiple } from "../utils/cloudinary";
 const products = Router();
 
 products.get("/list", getAllProducts);
-
 products.get("/published", getPublishedProducts);
-
 products.get("/details/:productId", getProductById);
-
 products.get("/paginated", getPaginatedProducts);
-
 products.get("/filter", filterProducts);
 
+/**
+ * ADMIN ROUTES  (richiedono token + admin)
+ */
 products.post(
   "/create",
   verifyToken,
   authorizeAdmin,
   validateProduct,
   createProduct
-);
-
-products.post(
-  "/duplicated/:productId",
-  verifyToken,
-  authorizeAdmin,
-  duplicateProduct
 );
 
 products.patch(
@@ -60,18 +53,28 @@ products.delete(
   deleteProduct
 );
 
-// CMS ACCESS — only admin
 products.patch(
   "/publish/:productId",
   verifyToken,
   authorizeAdmin,
   publishProduct
 );
+
 products.patch(
   "/unpublish/:productId",
   verifyToken,
   authorizeAdmin,
   unpublishProduct
+);
+
+/**
+ * DUPLICATE PRODUCT (CMS)
+ */
+products.post(
+  "/duplicate/:productId",
+  verifyToken,
+  authorizeAdmin,
+  duplicateProduct
 );
 
 products.post("/upload-image", uploadSingle, uploadProductImage);

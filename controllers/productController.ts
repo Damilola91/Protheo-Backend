@@ -3,7 +3,8 @@ import Product from "../models/ProductModel";
 import { createError } from "../utils/createError";
 import { logActivity } from "../utils/logActivity";
 
-// CREATE PRODUCT
+const escapeRegex = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 export const createProduct = async (
   req: Request,
   res: Response,
@@ -27,7 +28,6 @@ export const createProduct = async (
   }
 };
 
-// GET ALL PRODUCTS
 export const getAllProducts = async (
   req: Request,
   res: Response,
@@ -46,7 +46,6 @@ export const getAllProducts = async (
   }
 };
 
-// GET PRODUCT BY ID
 export const getProductById = async (
   req: Request,
   res: Response,
@@ -62,27 +61,78 @@ export const getProductById = async (
   }
 };
 
-// UPDATE PRODUCT + LOG BEFORE/AFTER
 export const updateProduct = async (
   req: Request,
   res: Response,
   next: NextFunction
 ) => {
   try {
-    const before = await Product.findById(req.params.productId);
+    const productId = req.params.productId;
+
+    const before = await Product.findById(productId).lean();
     if (!before) return next(createError(404, "Product not found"));
 
-    const updated = await Product.findByIdAndUpdate(
-      req.params.productId,
-      req.body,
-      { new: true, runValidators: true }
-    );
+    // Cast per poter usare indicizzazione dinamica
+    const beforeObj = before as Record<string, any>;
+    const updateData: Record<string, any> = { ...req.body };
+
+    // ---------------------------
+    // 🔥 RENAME INTELLIGENTE
+    // ---------------------------
+    if (updateData.name && updateData.name !== beforeObj.name) {
+      const baseName = updateData.name.trim();
+      const escaped = escapeRegex(baseName);
+      const regex = new RegExp(`^${escaped}( \\(\\d+\\))?$`, "i");
+
+      const conflicts = await Product.find({
+        name: regex,
+        _id: { $ne: productId },
+      }).lean();
+
+      if (conflicts.length > 0) {
+        const nums = conflicts
+          .map((p) => {
+            const m = p.name.match(/\((\\d+)\)$/);
+            return m ? Number(m[1]) : 1;
+          })
+          .sort((a, b) => b - a);
+
+        const nextNum = nums[0] + 1;
+        updateData.name = `${baseName} (${nextNum})`;
+      }
+    }
+    //  UPDATE DATABASE
+    const updated = await Product.findByIdAndUpdate(productId, updateData, {
+      new: true,
+      runValidators: true,
+    });
+
+    if (!updated) {
+      return next(createError(404, "Product not found after update"));
+    }
+
+    const updatedObj = (
+      updated.toObject ? updated.toObject() : updated
+    ) as Record<string, any>;
+
+    // LOG DELLA DIFFERENZA (solo campi realmente cambiati)
+
+    const changes: Record<string, any> = {};
+
+    for (const key of Object.keys(updateData)) {
+      if (beforeObj[key] !== updatedObj[key]) {
+        changes[key] = {
+          before: beforeObj[key],
+          after: updatedObj[key],
+        };
+      }
+    }
 
     await logActivity({
       action: "UPDATE_PRODUCT",
       userId: (req as any).user.id,
-      productId: updated?._id,
-      changes: { before, after: updated },
+      productId, // va bene come string, il tipo lo accetta
+      changes,
     });
 
     return res.status(200).json({
@@ -94,7 +144,8 @@ export const updateProduct = async (
   }
 };
 
-// DELETE PRODUCT + LOG
+// DELETE PRODUCT
+
 export const deleteProduct = async (
   req: Request,
   res: Response,
@@ -117,6 +168,7 @@ export const deleteProduct = async (
 };
 
 // PAGINATION
+
 export const getPaginatedProducts = async (
   req: Request,
   res: Response,
@@ -142,7 +194,8 @@ export const getPaginatedProducts = async (
   }
 };
 
-// FILTERS
+// FILTER PRODUCTS
+
 export const filterProducts = async (
   req: Request,
   res: Response,
@@ -163,13 +216,16 @@ export const filterProducts = async (
 
     if (req.query.feature)
       filter["features.name"] = { $regex: req.query.feature, $options: "i" };
+
     if (req.query.element)
       filter["composition.element"] = {
         $regex: req.query.element,
         $options: "i",
       };
+
     if (req.query.crop)
       filter["dosage.crop"] = { $regex: req.query.crop, $options: "i" };
+
     if (req.query.packageType) filter["packaging.type"] = req.query.packageType;
 
     const sortField = (req.query.sort as string) || "createdAt";
@@ -194,6 +250,7 @@ export const filterProducts = async (
 };
 
 // PUBLISH PRODUCT
+
 export const publishProduct = async (
   req: Request,
   res: Response,
@@ -225,6 +282,7 @@ export const publishProduct = async (
 };
 
 // UNPUBLISH PRODUCT
+
 export const unpublishProduct = async (
   req: Request,
   res: Response,
@@ -251,7 +309,8 @@ export const unpublishProduct = async (
   }
 };
 
-// UPLOAD SINGLE
+// UPLOAD SINGLE IMAGE
+
 export const uploadProductImage = (
   req: Request,
   res: Response,
@@ -272,7 +331,8 @@ export const uploadProductImage = (
   }
 };
 
-// UPLOAD MULTIPLE
+// UPLOAD MULTIPLE IMAGES
+
 export const uploadProductImages = (
   req: Request,
   res: Response,
@@ -293,7 +353,8 @@ export const uploadProductImages = (
   }
 };
 
-// LISTA solo prodotti pubblicati → utile per frontend
+// GET PUBLISHED PRODUCTS
+
 export const getPublishedProducts = async (
   req: Request,
   res: Response,
@@ -314,6 +375,8 @@ export const getPublishedProducts = async (
   }
 };
 
+// DUPLICATE PRODUCT (già perfetto)
+
 export const duplicateProduct = async (
   req: Request,
   res: Response,
@@ -323,6 +386,26 @@ export const duplicateProduct = async (
     const original = await Product.findById(req.params.productId);
     if (!original) return next(createError(404, "Product not found"));
 
+    const baseName = original.name;
+    const escapedBase = escapeRegex(baseName);
+    const regex = new RegExp(`^${escapedBase} \\(Copy( \\d+)?\\)$`, "i");
+
+    const copies = await Product.find({ name: regex }).lean();
+
+    let newName = `${baseName} (Copy)`;
+
+    if (copies.length > 0) {
+      const numbers = copies
+        .map((c) => {
+          const match = c.name.match(/\(Copy(?: (\d+))?\)$/);
+          return match && match[1] ? Number(match[1]) : 1;
+        })
+        .sort((a, b) => b - a);
+
+      const nextNumber = numbers[0] + 1;
+      newName = `${baseName} (Copy ${nextNumber})`;
+    }
+
     const data = original.toObject();
     delete data._id;
     delete data.createdAt;
@@ -330,7 +413,7 @@ export const duplicateProduct = async (
 
     const duplicated = await Product.create({
       ...data,
-      name: `${original.name} (Copy)`,
+      name: newName,
       isPublished: false,
       publishedAt: null,
       lastEditedBy: (req as any).user.id,

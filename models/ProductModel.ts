@@ -55,7 +55,7 @@ export interface IProduct extends Document {
   stock?: number;
   price?: number;
 
-  // 🔥 NEW CMS FIELDS
+  // NEW CMS FIELDS
   isPublished?: boolean;
   publishedAt?: Date | null;
   lastEditedBy?: string | mongoose.Types.ObjectId | null;
@@ -117,7 +117,7 @@ const ProductSchema = new Schema<IProduct>(
     stock: Number,
     price: Number,
 
-    // 🔥 CMS fields
+    //  CMS fields
     isPublished: { type: Boolean, default: false },
     publishedAt: { type: Date, default: null },
     lastEditedBy: { type: Schema.Types.ObjectId, ref: "User", default: null },
