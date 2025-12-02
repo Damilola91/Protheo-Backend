@@ -65,37 +65,66 @@ export const deleteActivityLog = async (
   }
 };
 
-export const deleteOldActivityLogs = async (
+//  DRY RUN — mostra quali log verrebbero cancellati
+export const dryRunCleanup = async (
   req: Request,
   res: Response,
   next: NextFunction
 ) => {
   try {
-    const olderThanDays = req.query.olderThanDays
-      ? Number(req.query.olderThanDays)
-      : 30;
+    const days = Number(req.query.olderThan) || 180;
 
-    if (Number.isNaN(olderThanDays) || olderThanDays <= 0) {
-      return next(
-        createError(
-          400,
-          "olderThanDays must be a positive number of days, e.g. 30"
-        )
-      );
+    if (Number.isNaN(days) || days < 7) {
+      return next(createError(400, "olderThan must be a number >= 7"));
     }
 
-    const now = Date.now();
-    const thresholdDate = new Date(now - olderThanDays * 24 * 60 * 60 * 1000);
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
-    const result = await ActivityLogModel.deleteMany({
-      createdAt: { $lt: thresholdDate },
+    const logs = await ActivityLogModel.find({
+      createdAt: { $lte: cutoff },
+    })
+      .sort({ createdAt: -1 })
+      .populate("userId", "name email")
+      .populate("productId", "name image")
+      .lean();
+
+    return res.status(200).json({
+      mode: "dryRun",
+      olderThanDays: days,
+      cutoffDate: cutoff,
+      totalToDelete: logs.length,
+      logs,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+//  EXECUTE — elimina davvero i log vecchi
+export const cleanupOldLogs = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const days = Number(req.query.olderThan) || 180;
+
+    if (Number.isNaN(days) || days < 7) {
+      return next(createError(400, "olderThan must be a number >= 7"));
+    }
+
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+    const deleted = await ActivityLogModel.deleteMany({
+      createdAt: { $lte: cutoff },
     });
 
     return res.status(200).json({
-      message: "Old activity logs deleted successfully",
-      olderThanDays,
-      deletedCount: result.deletedCount,
-      beforeDate: thresholdDate,
+      mode: "execute",
+      olderThanDays: days,
+      cutoffDate: cutoff,
+      deletedCount: deleted.deletedCount,
+      message: `Successfully deleted ${deleted.deletedCount} logs older than ${days} days.`,
     });
   } catch (err) {
     next(err);

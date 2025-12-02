@@ -6,6 +6,7 @@ import login from "./routes/login";
 import products from "./routes/products";
 import activity from "./routes/activityLogs";
 import errorHandler, { ApiErrorResponse } from "./middlewares/errorHandler";
+import { startActivityLogCleanupCron } from "./cron/cleanupLogs";
 
 const server = express();
 const PORT = process.env.PORT || 4154;
@@ -42,3 +43,4 @@ const start = async () => {
 };
 
 start();
+startActivityLogCleanupCron();
